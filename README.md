@@ -15,7 +15,7 @@ AWS authentication can be provided either via `AWS_ACCESS_KEY_ID`/`AWS_SECRET_AC
 ### Run locally
 
 ```bash
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
 ## API
