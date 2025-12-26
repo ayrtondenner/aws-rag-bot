@@ -31,16 +31,20 @@ class S3Service:
         self._config = config
         self._session = aioboto3.Session()
 
+    def _client(self) -> Any:
+        return self._session.client(
+            "s3",
+            region_name=self._config.region_name,
+            endpoint_url=self._config.endpoint_url,
+        )
+
     async def list_files(self, *, prefix: Optional[str] = None, max_keys: int = 1000) -> list[dict[str, Any]]:
         kwargs: dict[str, Any] = {"Bucket": self._config.bucket_name, "MaxKeys": max_keys}
         if prefix:
             kwargs["Prefix"] = prefix
 
-        async with self._session.client(
-            "s3",
-            region_name=self._config.region_name,
-            endpoint_url=self._config.endpoint_url,
-        ) as s3:
+        s3_client: Any = self._client()
+        async with s3_client as s3:
             response = await s3.list_objects_v2(**kwargs)
 
         return response.get("Contents", [])
@@ -55,11 +59,8 @@ class S3Service:
         if file.content_type:
             extra_args["ContentType"] = file.content_type
 
-        async with self._session.client(
-            "s3",
-            region_name=self._config.region_name,
-            endpoint_url=self._config.endpoint_url,
-        ) as s3:
+        s3_client: Any = self._client()
+        async with s3_client as s3:
             await s3.put_object(
                 Bucket=self._config.bucket_name,
                 Key=object_key,
@@ -73,9 +74,6 @@ class S3Service:
         if not key:
             raise ValueError("'key' must be provided")
 
-        async with self._session.client(
-            "s3",
-            region_name=self._config.region_name,
-            endpoint_url=self._config.endpoint_url,
-        ) as s3:
+        s3_client: Any = self._client()
+        async with s3_client as s3:
             await s3.delete_object(Bucket=self._config.bucket_name, Key=key)

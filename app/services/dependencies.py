@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from services.s3_service import S3Config, S3Service
+from app.services.s3_service import S3Config, S3Service
 
 
 def get_s3_service() -> S3Service:

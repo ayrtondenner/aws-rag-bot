@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from routes.s3 import router as s3_router
+from app.routes.s3 import router as s3_router
 
 app = FastAPI()
 
