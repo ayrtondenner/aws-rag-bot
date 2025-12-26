@@ -12,8 +12,16 @@
             "module": "uvicorn",
             "args": [
                 "app.main:app",
-                "--reload"
+                "--reload",
+                "--log-level", // Ensure INFO logs from uvicorn + app logger.info(...) are printed.
+                "info"
             ],
+            // Load environment variables (e.g. S3_BUCKET_NAME) for local/debug runs.
+            "envFile": "${workspaceFolder}/.env",
+            // Send stdout/stderr to the VS Code integrated terminal (more reliable than Debug Console for server logs).
+            "console": "integratedTerminal",
+            // uvicorn --reload runs the app in a child process; this attaches the debugger to that subprocess.
+            "subProcess": true,
             "jinja": true
         }
     ]

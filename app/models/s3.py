@@ -33,3 +33,8 @@ class UploadResponse(BaseModel):
 class DeleteResponse(BaseModel):
     key: str
     deleted: bool
+
+
+class FileListResponse(BaseModel):
+    count: int
+    files: list[FileItem]

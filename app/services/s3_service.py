@@ -1,11 +1,23 @@
 from __future__ import annotations
 
 import os
+import logging
+import mimetypes
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Optional
 
 import aioboto3
 from fastapi import UploadFile
+
+from app.models.s3 import FileItem
+
+
+logger = logging.getLogger(__name__)
+
+
+class S3ServiceError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -38,42 +50,72 @@ class S3Service:
             endpoint_url=self._config.endpoint_url,
         )
 
-    async def list_files(self, *, prefix: Optional[str] = None, max_keys: int = 1000) -> list[dict[str, Any]]:
-        kwargs: dict[str, Any] = {"Bucket": self._config.bucket_name, "MaxKeys": max_keys}
-        if prefix:
-            kwargs["Prefix"] = prefix
+    async def list_files(self, *, prefix: Optional[str] = None, max_keys: int = 1000) -> list[FileItem]:
+        try:
+            kwargs: dict[str, Any] = {"Bucket": self._config.bucket_name, "MaxKeys": max_keys}
+            if prefix:
+                kwargs["Prefix"] = prefix
 
-        s3_client: Any = self._client()
-        async with s3_client as s3:
-            response = await s3.list_objects_v2(**kwargs)
+            s3_client: Any = self._client()
+            async with s3_client as s3:
+                response = await s3.list_objects_v2(**kwargs)
 
-        return response.get("Contents", [])
+            objects = response.get("Contents", [])
+            return [FileItem.from_s3_object(o) for o in objects]
+        except Exception as exc:
+            logger.exception("S3 list_files failed")
+            raise S3ServiceError("Failed to list files from S3") from exc
 
-    async def upload_file(self, *, file: UploadFile, key: Optional[str] = None) -> str:
-        object_key = key or file.filename
-        if not object_key:
-            raise ValueError("Either 'key' must be provided or the uploaded file must have a filename.")
+    async def upload_local_file(self, *, path: Path, key: str, content_type: str | None = None) -> str:
+        """Upload a local file to S3.
 
-        body = await file.read()
-        extra_args: dict[str, Any] = {}
-        if file.content_type:
-            extra_args["ContentType"] = file.content_type
+        Args:
+            path: Local file path.
+            key: Destination S3 object key.
+            content_type: Optional content type override.
 
-        s3_client: Any = self._client()
-        async with s3_client as s3:
-            await s3.put_object(
-                Bucket=self._config.bucket_name,
-                Key=object_key,
-                Body=body,
-                **extra_args,
-            )
+        Returns:
+            The uploaded object key.
+        """
 
-        return object_key
+        try:
+            if not key:
+                raise ValueError("'key' must be provided")
+            if not path.exists() or not path.is_file():
+                raise FileNotFoundError(str(path))
+
+            body = path.read_bytes()
+            effective_content_type = content_type
+            if effective_content_type is None:
+                guessed, _ = mimetypes.guess_type(str(path))
+                effective_content_type = guessed
+
+            extra_args: dict[str, Any] = {}
+            if effective_content_type:
+                extra_args["ContentType"] = effective_content_type
+
+            s3_client: Any = self._client()
+            async with s3_client as s3:
+                await s3.put_object(
+                    Bucket=self._config.bucket_name,
+                    Key=key,
+                    Body=body,
+                    **extra_args,
+                )
+
+            return key
+        except Exception as exc:
+            logger.exception("S3 upload_path failed")
+            raise S3ServiceError(f"Failed to upload local file to S3 (key={key})") from exc
 
     async def delete_file(self, *, key: str) -> None:
-        if not key:
-            raise ValueError("'key' must be provided")
+        try:
+            if not key:
+                raise ValueError("'key' must be provided")
 
-        s3_client: Any = self._client()
-        async with s3_client as s3:
-            await s3.delete_object(Bucket=self._config.bucket_name, Key=key)
+            s3_client: Any = self._client()
+            async with s3_client as s3:
+                await s3.delete_object(Bucket=self._config.bucket_name, Key=key)
+        except Exception as exc:
+            logger.exception("S3 delete_file failed")
+            raise S3ServiceError("Failed to delete file from S3") from exc
