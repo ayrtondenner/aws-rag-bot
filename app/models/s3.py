@@ -21,11 +21,6 @@ class FileItem(BaseModel):
             etag=obj.get("ETag"),
         )
 
-
-class ListFilesResponse(BaseModel):
-    files: list[FileItem]
-
-
 class UploadResponse(BaseModel):
     key: str
 

@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import aioboto3
-from fastapi import UploadFile
 
 from app.models.s3 import FileItem
 

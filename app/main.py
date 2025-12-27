@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from starlette import status
 
 from app.routes.s3 import router as s3_router
+from app.routes.text import router as text_router
 from app.services.dependencies import get_sagemaker_docs_sync_service
 from app.services.s3_service import S3ServiceError
 
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 app.include_router(s3_router)
+app.include_router(text_router)
 
 
 @app.exception_handler(S3ServiceError)
