@@ -9,6 +9,8 @@ from typing import Any, Optional
 
 import aioboto3
 
+from typing import Optional
+
 from app.models.s3 import FileItem
 
 
@@ -65,7 +67,7 @@ class S3Service:
             logger.exception("S3 list_files failed")
             raise S3ServiceError("Failed to list files from S3") from exc
 
-    async def upload_local_file(self, *, path: Path, key: str, content_type: str | None = None) -> str:
+    async def upload_local_file(self, *, path: Path, key: str, content_type: Optional[str] = None) -> str:
         """Upload a local file to S3.
 
         Args:

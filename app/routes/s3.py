@@ -6,12 +6,14 @@ from app.models.s3 import DeleteResponse, FileListResponse, UploadResponse
 from app.services.dependencies import get_s3_service
 from app.services.s3_service import S3Service
 
+from typing import Optional
+
 router = APIRouter(prefix="/s3", tags=["s3"])
 
 
 @router.get("/files", response_model=FileListResponse)
 async def list_files(
-    prefix: str | None = Query(default=None),
+    prefix: Optional[str] = Query(default=None),
     s3: S3Service = Depends(get_s3_service),
 ) -> FileListResponse:
     files = await s3.list_files(prefix=prefix)

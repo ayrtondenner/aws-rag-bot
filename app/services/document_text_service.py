@@ -5,6 +5,8 @@ import os
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_aws.embeddings import BedrockEmbeddings
 
+from typing import Optional
+
 
 class DocumentTextServiceError(RuntimeError):
     pass
@@ -16,7 +18,7 @@ class DocumentTextService:
 
     def __init__(self) -> None:
         self._splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        self._embeddings: BedrockEmbeddings | None = None
+        self._embeddings: Optional[BedrockEmbeddings] = None
 
     def _get_embeddings_dimensions(self) -> int:
         dim = int(os.getenv("BEDROCK_EMBEDDING_DIM", self._BEDROCK_EMBEDDING_DIM_DEFAULT))
@@ -32,7 +34,7 @@ class DocumentTextService:
         model_id = os.getenv("BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0")
         target_dim = self._get_embeddings_dimensions()
 
-        model_kwargs: dict[str, object] | None = None
+        model_kwargs: Optional[dict[str, object]] = None
         if "titan-embed-text-v2" in model_id:
             model_kwargs = {"dimensions": target_dim}
 
