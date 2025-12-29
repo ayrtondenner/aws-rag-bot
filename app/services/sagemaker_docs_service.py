@@ -7,6 +7,8 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+from typing import Optional
+
 from app.services.s3_service import S3Service, S3ServiceError
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ class SageMakerDocsSyncService:
         self._config = config
 
     @staticmethod
-    def _planned_upload_item(*, docs_dir: Path, prefix: str, existing_keys: set[str], path: Path) -> tuple[Path, str] | None:
+    def _planned_upload_item(*, docs_dir: Path, prefix: str, existing_keys: set[str], path: Path) -> Optional[tuple[Path, str]]:
         rel_key = path.relative_to(docs_dir).as_posix()
         s3_key = f"{prefix}{rel_key}" if prefix else rel_key
         if s3_key in existing_keys:
@@ -84,7 +86,7 @@ class SageMakerDocsSyncService:
 
         semaphore = asyncio.Semaphore(self._config.concurrency)
 
-        async def _upload_one(path: Path, key: str) -> tuple[str, bool, str | None]:
+        async def _upload_one(path: Path, key: str) -> tuple[str, bool, Optional[str]]:
             async with semaphore:
                 try:
                     await self._s3.upload_local_file(path=path, key=key, content_type="text/markdown")
