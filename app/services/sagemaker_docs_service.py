@@ -4,12 +4,16 @@ import asyncio
 import hashlib
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from tqdm import tqdm
 
 from app.services.config import SageMakerDocsConfig, SageMakerDocsSyncConfig
 from app.services.s3_service import S3Service, S3ServiceError
+
+if TYPE_CHECKING:
+    from app.services.setup.opensearch_setup_service import OpenSearchSetupService
+    from app.services.setup.s3_setup_service import S3SetupService
 
 logger = logging.getLogger(__name__)
 
@@ -106,14 +110,33 @@ class SageMakerDocsSyncService:
             succeeded,
             failed,
         )
+
+
 class SageMakerDocsService:
     """Generic helpers for working with SageMaker docs on disk.
 
     This service does not talk to OpenSearch; it only deals with local doc files.
     """
 
-    def __init__(self, config: SageMakerDocsConfig) -> None:
+    def __init__(
+        self,
+        config: SageMakerDocsConfig,
+        *,
+        s3_setup_service: "S3SetupService",
+        opensearch_setup_service: "OpenSearchSetupService",
+    ) -> None:
         self._config = config
+        self._s3_setup_service = s3_setup_service
+        self._opensearch_setup_service = opensearch_setup_service
+
+    async def setup_environment(self) -> None:
+        """Provision required infrastructure for SageMaker docs.
+
+        This is a thin orchestration helper used at app startup.
+        """
+
+        await self._s3_setup_service.setup_bucket()
+        await self._opensearch_setup_service.setup_opensearch_environment()
 
     @property
     def docs_dir(self) -> Path:

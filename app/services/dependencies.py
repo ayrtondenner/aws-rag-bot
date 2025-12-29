@@ -45,12 +45,32 @@ def get_document_text_service() -> DocumentTextService:
     return DocumentTextService()
 
 
-def get_sagemaker_docs_service() -> SageMakerDocsService:
+def get_sagemaker_docs_service(request: Request) -> SageMakerDocsService:
     """Dependency provider for generic local SageMaker docs helpers."""
 
+    return _get_sagemaker_docs_service(request)
+
+def get_sagemaker_docs_service_from_app(app: FastAPI) -> SageMakerDocsService:
+    """Provider for non-request contexts (e.g. app lifespan startup)."""
+
+    return _get_sagemaker_docs_service(app)
+
+def _get_sagemaker_docs_service(input: Request | FastAPI) -> SageMakerDocsService:
     project_root = Path(__file__).resolve().parents[2]
     docs_dir = project_root / "sagemaker-docs"
-    return SageMakerDocsService(SageMakerDocsConfig.from_env(docs_dir=docs_dir))
+
+    if isinstance(input, Request):
+        opensearch_setup_service = get_opensearch_setup_service(input)
+    elif isinstance(input, FastAPI):
+        opensearch_setup_service = get_opensearch_setup_service_from_app(input)
+    else:
+        raise TypeError(f"Unsupported input type: {type(input)!r}")
+
+    return SageMakerDocsService(
+        SageMakerDocsConfig.from_env(docs_dir=docs_dir),
+        s3_setup_service=get_s3_setup_service(),
+        opensearch_setup_service=opensearch_setup_service,
+    )
 
 
 def get_http_session_from_app(app: FastAPI) -> aiohttp.ClientSession:
