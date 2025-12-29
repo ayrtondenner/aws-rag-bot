@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -120,3 +122,57 @@ class SageMakerDocsSyncService:
             succeeded,
             failed,
         )
+
+
+@dataclass(frozen=True)
+class SageMakerDocsConfig:
+    """Configuration for working with the local `sagemaker-docs/` folder."""
+
+    docs_dir: Path
+    source_name: str = "sagemaker-docs"
+
+    @staticmethod
+    def from_env(*, docs_dir: Path) -> "SageMakerDocsConfig":
+        return SageMakerDocsConfig(
+            docs_dir=docs_dir,
+            source_name=os.getenv("OPENSEARCH_DOCS_SOURCE_NAME", "sagemaker-docs"),
+        )
+
+
+class SageMakerDocsService:
+    """Generic helpers for working with SageMaker docs on disk.
+
+    This service does not talk to OpenSearch; it only deals with local doc files.
+    """
+
+    def __init__(self, config: SageMakerDocsConfig) -> None:
+        self._config = config
+
+    @property
+    def docs_dir(self) -> Path:
+        return self._config.docs_dir
+
+    @property
+    def source_name(self) -> str:
+        return self._config.source_name
+
+    def list_markdown_files(self) -> list[Path]:
+        docs_dir = self._config.docs_dir
+        if not docs_dir.exists() or not docs_dir.is_dir():
+            return []
+        return sorted(p for p in docs_dir.rglob("*.md") if p.is_file())
+
+    def relative_path(self, *, path: Path) -> str:
+        return path.relative_to(self._config.docs_dir).as_posix()
+
+    @staticmethod
+    def doc_id_from_rel_path(rel_path: str) -> str:
+        # Stable id (hex) derived from relative path.
+        return hashlib.sha256(rel_path.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def read_text_file(path: Path) -> str:
+        try:
+            return path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return path.read_text(encoding="utf-8", errors="replace")

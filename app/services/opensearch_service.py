@@ -85,8 +85,16 @@ class OpenSearchConfig:
         )
 
     @staticmethod
-    def from_env() -> "OpenSearchConfig":
-        return OpenSearchConfig.from_env_named(endpoint_env="OPENSEARCH_ENDPOINT")
+    def from_env_search() -> "OpenSearchConfig":
+        """Load config for the search collection endpoint."""
+
+        return OpenSearchConfig.from_env_named(endpoint_env="OPENSEARCH_SEARCH_ENDPOINT")
+
+    @staticmethod
+    def from_env_vector() -> "OpenSearchConfig":
+        """Load config for the vector collection endpoint."""
+
+        return OpenSearchConfig.from_env_named(endpoint_env="OPENSEARCH_VECTOR_ENDPOINT")
 
 
 class OpenSearchService:
