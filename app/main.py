@@ -1,13 +1,13 @@
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette import status
 
+from app.routes.opensearch import router as opensearch_router
 from app.routes.s3 import router as s3_router
 from app.routes.text import router as text_router
-from app.routes.opensearch import router as opensearch_router
 from app.services.dependencies import get_sagemaker_docs_sync_service
 from app.services.s3_service import S3ServiceError
 

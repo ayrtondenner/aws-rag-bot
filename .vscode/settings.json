@@ -1,0 +1,21 @@
+{
+  // Use Ruff as the formatter for Python
+  "[python]": {
+    "editor.defaultFormatter": "astral-sh.ruff",
+    "editor.formatOnSave": true,
+
+    // Run Ruff's autofixes and import sorting on save
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "always",
+      "source.organizeImports.ruff": "always"
+    }
+  },
+
+  // Avoid double-organizing imports with other tools
+  "python.analysis.autoImportCompletions": true,
+  "python.sortImports.path": "",
+  "python.sortImports.args": [],
+
+  // If you use Pylance, this prevents it from also trying to fix imports
+  "python.analysis.fixAll": []
+}
