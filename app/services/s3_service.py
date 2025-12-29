@@ -2,38 +2,21 @@ from __future__ import annotations
 
 import logging
 import mimetypes
-import os
-from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Optional
 
 import aioboto3
+from botocore.exceptions import ClientError
 
 from app.models.s3 import FileItem
+from app.services.config import S3Config
 
 logger = logging.getLogger(__name__)
 
 
 class S3ServiceError(RuntimeError):
     pass
-
-
-@dataclass(frozen=True)
-class S3Config:
-    bucket_name: str
-    region_name: Optional[str] = None
-    endpoint_url: Optional[str] = None
-
-    @staticmethod
-    def from_env() -> "S3Config":
-        bucket_name = os.getenv("S3_BUCKET_NAME")
-        if not bucket_name:
-            raise ValueError("Missing required environment variable: S3_BUCKET_NAME")
-
-        region_name = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
-        endpoint_url = os.getenv("S3_ENDPOINT_URL")
-
-        return S3Config(bucket_name=bucket_name, region_name=region_name, endpoint_url=endpoint_url)
 
 
 class S3Service:
@@ -47,6 +30,37 @@ class S3Service:
             region_name=self._config.region_name,
             endpoint_url=self._config.endpoint_url,
         )
+
+    async def bucket_exists(self, *, bucket_name: str) -> bool:
+        """Return True if the bucket exists (and is accessible), otherwise False.
+
+        Notes:
+        - If the bucket exists but is not accessible, AWS commonly returns 403.
+          In that case we raise to avoid incorrectly attempting creation.
+        """
+
+        if not bucket_name or not bucket_name.strip():
+            raise ValueError("bucket_name must be provided")
+
+        try:
+            s3_client: Any = self._client()
+            async with s3_client as s3:
+                await s3.head_bucket(Bucket=bucket_name)
+            return True
+        except ClientError as exc:
+            code = (exc.response.get("Error") or {}).get("Code")
+            status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            status_enum = HTTPStatus(status) if isinstance(status, int) else None
+            # Common "does not exist" variants:
+            if status_enum == HTTPStatus.NOT_FOUND or code in {"NoSuchBucket", "NotFound"}:
+                return False
+            if status_enum == HTTPStatus.FORBIDDEN or code in {"AccessDenied"}:
+                raise S3ServiceError(f"Access denied checking S3 bucket: {bucket_name}") from exc
+            logger.exception("S3 bucket_exists failed")
+            raise S3ServiceError(f"Failed to check if S3 bucket exists: {bucket_name}") from exc
+        except Exception as exc:
+            logger.exception("S3 bucket_exists failed")
+            raise S3ServiceError(f"Failed to check if S3 bucket exists: {bucket_name}") from exc
 
     async def list_files(self, *, prefix: Optional[str] = None, max_keys: int = 1000) -> list[FileItem]:
         try:

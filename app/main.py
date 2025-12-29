@@ -8,7 +8,11 @@ from starlette import status
 from app.routes.opensearch import router as opensearch_router
 from app.routes.s3 import router as s3_router
 from app.routes.text import router as text_router
-from app.services.dependencies import get_sagemaker_docs_sync_service
+from app.services.dependencies import (
+    get_opensearch_setup_service,
+    get_s3_setup_service,
+    get_sagemaker_docs_sync_service,
+)
 from app.services.s3_service import S3ServiceError
 
 
@@ -26,6 +30,11 @@ def _ensure_logging() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _ensure_logging()
+
+    # Provision required infrastructure at startup.
+    await get_s3_setup_service().setup_bucket()
+    await get_opensearch_setup_service().setup_opensearch_environment()
+
     await get_sagemaker_docs_sync_service().startup_check_and_sync_docs()
     yield
 

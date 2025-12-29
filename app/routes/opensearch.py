@@ -65,8 +65,8 @@ async def index_sagemaker_docs(
         if not docs_dir.exists() or not docs_dir.is_dir():
             raise ValueError(f"Docs directory not found: {docs_dir}")
 
-        search_index = os.getenv("OPENSEARCH_SEARCH_INDEX_NAME", "sagemaker-docs")
-        vector_index = os.getenv("OPENSEARCH_VECTOR_INDEX_NAME", "sagemaker-docs-vectors")
+        search_index = os.getenv("OPENSEARCH_SEARCH_INDEX_NAME", "sagemaker-docs-search-index")
+        vector_index = os.getenv("OPENSEARCH_VECTOR_INDEX_NAME", "sagemaker-docs-vectors-index")
 
         if not search.index_exists(index_name=search_index):
             search.create_index_and_mapping(index_name=search_index, mapping=_search_mapping())

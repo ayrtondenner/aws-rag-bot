@@ -3,30 +3,15 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from tqdm import tqdm
 
+from app.services.config import SageMakerDocsConfig, SageMakerDocsSyncConfig
 from app.services.s3_service import S3Service, S3ServiceError
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class SageMakerDocsSyncConfig:
-    """Internal configuration for SageMaker docs startup sync.
-
-    This is service wiring/runtime configuration (paths, prefix, concurrency), not an API
-    request/response schema. That's why it's a lightweight dataclass kept with the
-    service instead of a Pydantic model under app/models.
-    """
-
-    docs_dir: Path
-    s3_prefix: str = "sagemaker-docs/"
-    concurrency: int = 10
 
 
 class SageMakerDocsSyncService:
@@ -121,23 +106,6 @@ class SageMakerDocsSyncService:
             succeeded,
             failed,
         )
-
-
-@dataclass(frozen=True)
-class SageMakerDocsConfig:
-    """Configuration for working with the local `sagemaker-docs/` folder."""
-
-    docs_dir: Path
-    source_name: str = "sagemaker-docs"
-
-    @staticmethod
-    def from_env(*, docs_dir: Path) -> "SageMakerDocsConfig":
-        return SageMakerDocsConfig(
-            docs_dir=docs_dir,
-            source_name=os.getenv("OPENSEARCH_DOCS_SOURCE_NAME", "sagemaker-docs"),
-        )
-
-
 class SageMakerDocsService:
     """Generic helpers for working with SageMaker docs on disk.
 

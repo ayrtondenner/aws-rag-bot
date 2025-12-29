@@ -2,15 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.services.document_text_service import DocumentTextService
-from app.services.opensearch_service import OpenSearchConfig, OpenSearchService
-from app.services.s3_service import S3Config, S3Service
-from app.services.sagemaker_docs_service import (
+from app.services.config import OpenSearchConfig, S3Config
+from app.services.config.sagemaker_docs import (
     SageMakerDocsConfig,
-    SageMakerDocsService,
     SageMakerDocsSyncConfig,
+)
+from app.services.document_text_service import DocumentTextService
+from app.services.opensearch_service import OpenSearchService
+from app.services.s3_service import S3Service
+from app.services.sagemaker_docs_service import (
+    SageMakerDocsService,
     SageMakerDocsSyncService,
 )
+from app.services.setup.opensearch_setup_service import OpenSearchSetupService
+from app.services.setup.s3_setup_service import S3SetupService
 
 
 def get_s3_service() -> S3Service:
@@ -51,3 +56,14 @@ def get_opensearch_search_service() -> OpenSearchService:
 
 def get_opensearch_vector_service() -> OpenSearchService:
     return OpenSearchService(OpenSearchConfig.from_env_vector())
+
+
+def get_s3_setup_service() -> S3SetupService:
+    return S3SetupService(s3=get_s3_service())
+
+
+def get_opensearch_setup_service() -> OpenSearchSetupService:
+    return OpenSearchSetupService(
+        search=get_opensearch_search_service(),
+        vector=get_opensearch_vector_service(),
+    )
