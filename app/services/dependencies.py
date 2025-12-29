@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import aiohttp
-from fastapi import Request
+from fastapi import FastAPI, Request
 
 from app.services.config import OpenSearchConfig, S3Config
 from app.services.config.sagemaker_docs import (
@@ -52,13 +52,18 @@ def get_sagemaker_docs_service() -> SageMakerDocsService:
     docs_dir = project_root / "sagemaker-docs"
     return SageMakerDocsService(SageMakerDocsConfig.from_env(docs_dir=docs_dir))
 
-def get_http_session(request: Request) -> aiohttp.ClientSession:
-    session = getattr(request.app.state, "http_session", None)
+
+def get_http_session_from_app(app: FastAPI) -> aiohttp.ClientSession:
+    session = getattr(app.state, "http_session", None)
     if session is None:
         raise RuntimeError("HTTP session not initialized (app.state.http_session)")
     if not isinstance(session, aiohttp.ClientSession):
         raise RuntimeError("Unexpected http_session type")
     return session
+
+
+def get_http_session(request: Request) -> aiohttp.ClientSession:
+    return get_http_session_from_app(request.app)
 
 
 def get_opensearch_search_service(request: Request) -> OpenSearchService:
@@ -74,7 +79,10 @@ def get_s3_setup_service() -> S3SetupService:
 
 
 def get_opensearch_setup_service(request: Request) -> OpenSearchSetupService:
-    return OpenSearchSetupService(
-        search=get_opensearch_search_service(request),
-        vector=get_opensearch_vector_service(request),
-    )
+    return OpenSearchSetupService.from_env(session=get_http_session(request))
+
+
+def get_opensearch_setup_service_from_app(app: FastAPI) -> OpenSearchSetupService:
+    """Helper for non-request contexts (e.g. app lifespan startup)."""
+
+    return OpenSearchSetupService.from_env(session=get_http_session_from_app(app))

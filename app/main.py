@@ -10,11 +10,11 @@ from app.routes.opensearch import router as opensearch_router
 from app.routes.s3 import router as s3_router
 from app.routes.text import router as text_router
 from app.services.dependencies import (
+    get_opensearch_setup_service_from_app,
     get_s3_setup_service,
     get_sagemaker_docs_sync_service,
 )
 from app.services.s3_service import S3ServiceError
-from app.services.setup.opensearch_setup_service import OpenSearchSetupService
 
 
 def _ensure_logging() -> None:
@@ -32,15 +32,31 @@ def _ensure_logging() -> None:
 async def lifespan(app: FastAPI):
     _ensure_logging()
 
-    # TODO: try to get this from dependencies.py?
+    # NOTE: FastAPI lifespan runs with only the `app` instance (no per-request `Request`).
+    # Some dependency helpers (like `get_opensearch_setup_service(request)`) require a Request
+    # because they pull shared resources from `request.app.state`.
+    #
+    # To keep a single, reusable HTTP client for the whole app lifetime, we create an
+    # aiohttp.ClientSession here and store it on `app.state`. App-level dependency helpers
+    # can then retrieve it (without needing a Request) during startup.
+
+    # ATTENTION:
+    # We create one aiohttp.ClientSession for the app's lifetime and store it on `app.state`.
+    # This is *singleton-like* (a single shared instance for reuse), but it is not the strict
+    # GoF Singleton pattern:
+    # - It's app-scoped (one per FastAPI app instance), not a globally enforced single instance.
+    # - In tests or multi-worker deployments, you can still have multiple sessions (one per process).
+    #
+    # App-level dependency helpers can retrieve the session without needing a Request.
     app.state.http_session = aiohttp.ClientSession()
 
     # Provision required infrastructure at startup.
     try:
         await get_s3_setup_service().setup_bucket()
 
-        opensearch_setup = OpenSearchSetupService.from_env(session=app.state.http_session)
-        await opensearch_setup.setup_opensearch_environment()
+        # We can’t call `get_opensearch_setup_service(request)` here because there is no Request.
+        # Instead, use the app-based provider, which reads `app.state.http_session`.
+        await get_opensearch_setup_service_from_app(app).setup_opensearch_environment()
 
         await get_sagemaker_docs_sync_service().startup_check_and_sync_docs()
         yield
