@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
-import urllib.error
-import urllib.request
 from http import HTTPStatus
 from typing import Any, Optional
 from urllib.parse import quote
 
+import aiohttp
 import botocore.session
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
@@ -24,18 +23,22 @@ class OpenSearchServiceError(RuntimeError):
 class OpenSearchIndexAlreadyExistsError(OpenSearchServiceError):
     pass
 
-
 class OpenSearchService:
-    """Minimal OpenSearch data-plane service using AWS SigV4 signing.
+    """Async OpenSearch data-plane service using aiohttp + AWS SigV4 signing.
 
-    This avoids extra dependencies (like opensearch-py) and uses the AWS credentials
-    already configured for the app (env vars, profiles/SSO, instance role, etc.).
+    It avoids blocking the event loop by using an async HTTP client.
+
+    Notes:
+    - SigV4 signing still uses botocore.
+    - AWS credential resolution is performed via botocore; in common setups this is
+      cached/in-memory, but some credential providers may still perform I/O.
     """
 
-    def __init__(self, config: OpenSearchConfig) -> None:
+    def __init__(self, config: OpenSearchConfig, *, session: aiohttp.ClientSession) -> None:
         self._config = config
+        self._session = session
 
-    def _signed_request(
+    async def _signed_request(
         self,
         *,
         method: str,
@@ -66,25 +69,22 @@ class OpenSearchService:
         SigV4Auth(frozen, self._config.service_name, self._config.region_name).add_auth(aws_request)
         prepared = aws_request.prepare()
 
-        req = urllib.request.Request(
-            url=url,
-            data=body,
-            method=method.upper(),
-            headers=dict(prepared.headers),
-        )
-
         try:
-            with urllib.request.urlopen(req, timeout=self._config.timeout_seconds) as resp:
-                return (resp.status, resp.read() or b"")
-        except urllib.error.HTTPError as http_err:
-            # HTTPError is also a valid response; read body for context.
-            try:
-                payload = http_err.read() or b""
-            except Exception:
-                payload = b""
-            return (http_err.code, payload)
+            timeout = aiohttp.ClientTimeout(total=self._config.timeout_seconds)
+            async with self._session.request(
+                method=method.upper(),
+                url=url,
+                data=body,
+                headers=dict(prepared.headers),
+                timeout=timeout,
+            ) as resp:
+                payload = await resp.read()
+                return (resp.status, payload or b"")
+        except aiohttp.ClientError as exc:
+            logger.exception("OpenSearch async request failed (method=%s path=%s)", method, path)
+            raise OpenSearchServiceError("OpenSearch request failed") from exc
         except Exception as exc:
-            logger.exception("OpenSearch request failed (method=%s path=%s)", method, path)
+            logger.exception("OpenSearch async request failed (method=%s path=%s)", method, path)
             raise OpenSearchServiceError("OpenSearch request failed") from exc
 
     @staticmethod
@@ -92,12 +92,12 @@ class OpenSearchService:
         if not index_name or not index_name.strip():
             raise ValueError("index_name must be provided")
 
-    def index_exists(self, *, index_name: str) -> bool:
+    async def index_exists(self, *, index_name: str) -> bool:
         """Return True if the index exists, otherwise False."""
 
         self._validate_index_name(index_name)
 
-        status, _ = self._signed_request(method="HEAD", path=f"/{index_name}")
+        status, _ = await self._signed_request(method="HEAD", path=f"/{index_name}")
         if status == HTTPStatus.OK:
             return True
         if status == HTTPStatus.NOT_FOUND:
@@ -105,32 +105,25 @@ class OpenSearchService:
 
         raise OpenSearchServiceError(f"Unexpected OpenSearch response checking index exists: HTTP {status}")
 
-    def create_index_and_mapping(
+    # TODO: readd returns and raises to docstring of the methods
+    async def create_index_and_mapping(
         self,
         *,
         index_name: str,
         mapping: dict[str, Any],
         settings: Optional[dict[str, Any]] = None,
     ) -> bool:
-        """Create an index with the provided mapping.
-
-        Returns:
-            True if the index was created successfully.
-
-        Raises:
-            OpenSearchIndexAlreadyExistsError: if an index with the same name already exists.
-            OpenSearchServiceError: for unexpected OpenSearch/AWS failures.
-        """
+        """Create an index with the provided mapping."""
 
         self._validate_index_name(index_name)
-        if self.index_exists(index_name=index_name):
+        if await self.index_exists(index_name=index_name):
             raise OpenSearchIndexAlreadyExistsError(f"Index already exists: {index_name}")
 
         body: dict[str, Any] = {"mappings": mapping}
         if settings:
             body["settings"] = settings
 
-        status, payload = self._signed_request(
+        status, payload = await self._signed_request(
             method="PUT",
             path=f"/{index_name}",
             body=json.dumps(body).encode("utf-8"),
@@ -142,7 +135,6 @@ class OpenSearchService:
                 return True
             try:
                 parsed = json.loads(payload.decode("utf-8"))
-                # Typically: {"acknowledged": true, "shards_acknowledged": true, "index": "..."}
                 return bool(parsed.get("acknowledged", True))
             except Exception:
                 return True
@@ -156,7 +148,7 @@ class OpenSearchService:
             f"Failed to create OpenSearch index (index={index_name}) HTTP {status} {details}".strip()
         )
 
-    def index_document(
+    async def index_document(
         self,
         *,
         index_name: str,
@@ -170,7 +162,7 @@ class OpenSearchService:
             raise ValueError("document_id must be provided")
 
         safe_id = quote(document_id, safe="")
-        status, payload = self._signed_request(
+        status, payload = await self._signed_request(
             method="PUT",
             path=f"/{index_name}/_doc/{safe_id}",
             body=json.dumps(document).encode("utf-8"),

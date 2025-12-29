@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 
+import aiohttp
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette import status
@@ -9,11 +10,11 @@ from app.routes.opensearch import router as opensearch_router
 from app.routes.s3 import router as s3_router
 from app.routes.text import router as text_router
 from app.services.dependencies import (
-    get_opensearch_setup_service,
     get_s3_setup_service,
     get_sagemaker_docs_sync_service,
 )
 from app.services.s3_service import S3ServiceError
+from app.services.setup.opensearch_setup_service import OpenSearchSetupService
 
 
 def _ensure_logging() -> None:
@@ -31,12 +32,20 @@ def _ensure_logging() -> None:
 async def lifespan(app: FastAPI):
     _ensure_logging()
 
-    # Provision required infrastructure at startup.
-    await get_s3_setup_service().setup_bucket()
-    await get_opensearch_setup_service().setup_opensearch_environment()
+    # TODO: try to get this from dependencies.py?
+    app.state.http_session = aiohttp.ClientSession()
 
-    await get_sagemaker_docs_sync_service().startup_check_and_sync_docs()
-    yield
+    # Provision required infrastructure at startup.
+    try:
+        await get_s3_setup_service().setup_bucket()
+
+        opensearch_setup = OpenSearchSetupService.from_env(session=app.state.http_session)
+        await opensearch_setup.setup_opensearch_environment()
+
+        await get_sagemaker_docs_sync_service().startup_check_and_sync_docs()
+        yield
+    finally:
+        await app.state.http_session.close()
 
 
 app = FastAPI(lifespan=lifespan)
