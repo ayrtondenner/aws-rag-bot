@@ -309,6 +309,8 @@ class OpenSearchSetupService:
         expected_mapping: dict[str, object],
         index_settings: Optional[dict[str, Any]] = None,
     ) -> None:
+        
+        # TODO: remove this if possible, this method should only create mapping, not index
         await self._setup_index(collection_name=collection_name, index_name=index_name, index_settings=index_settings)
 
         if await self._mapping_exists_in_index(

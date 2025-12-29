@@ -106,6 +106,7 @@ class OpenSearchService:
         raise OpenSearchServiceError(f"Unexpected OpenSearch response checking index exists: HTTP {status}")
 
     # TODO: readd returns and raises to docstring of the methods
+    # TODO: delete this method. Index and mapping should be created separately at setup time.
     async def create_index_and_mapping(
         self,
         *,
