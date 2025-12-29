@@ -6,10 +6,9 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from tqdm import tqdm
-
-from typing import Optional
 
 from app.services.s3_service import S3Service, S3ServiceError
 

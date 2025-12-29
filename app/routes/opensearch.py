@@ -16,7 +16,6 @@ from app.services.document_text_service import DocumentTextService
 from app.services.opensearch_service import OpenSearchService
 from app.services.sagemaker_docs_service import SageMakerDocsService
 
-
 router = APIRouter(prefix="/opensearch", tags=["opensearch"])
 
 

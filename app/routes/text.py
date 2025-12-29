@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.models.text import EmbedTextRequest, EmbedTextResponse, SplitTextRequest, SplitTextResponse
+from app.models.text import (
+    EmbedTextRequest,
+    EmbedTextResponse,
+    SplitTextRequest,
+    SplitTextResponse,
+)
 from app.services.dependencies import get_document_text_service
 from app.services.document_text_service import DocumentTextService
 

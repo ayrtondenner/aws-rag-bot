@@ -1,0 +1,23 @@
+[tool.ruff]
+# Match your project's target Python version.
+target-version = "py311"
+
+# Keep this consistent with your formatter expectations.
+line-length = 88
+
+[tool.ruff.lint]
+# Enable:
+# - F: Pyflakes (unused imports, undefined names, etc.)
+# - I: import sorting (isort-compatible)
+select = ["F", "I"]
+
+# Allow Ruff to apply fixes (VS Code triggers fixes via code actions on save).
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+# If your project has a package name, set it here so Ruff can treat it as first-party.
+# Example: known-first-party = ["app"]
+known-first-party = ["app"]
+
+# Optional: helps merge `import x as y` and `import x` ordering; generally safe.
+combine-as-imports = true

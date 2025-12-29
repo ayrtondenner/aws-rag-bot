@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import os
 import logging
 import mimetypes
-from pathlib import Path
+import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional
 
 import aioboto3
 
-from typing import Optional
-
 from app.models.s3 import FileItem
-
 
 logger = logging.getLogger(__name__)
 

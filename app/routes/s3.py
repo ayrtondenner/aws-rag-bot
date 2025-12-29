@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Path, Query, UploadFile
+from typing import Optional
 
-from app.models.s3 import DeleteResponse, FileListResponse, UploadResponse
+from fastapi import APIRouter, Depends, Path, Query
+
+from app.models.s3 import DeleteResponse, FileListResponse
 from app.services.dependencies import get_s3_service
 from app.services.s3_service import S3Service
-
-from typing import Optional
 
 router = APIRouter(prefix="/s3", tags=["s3"])
 

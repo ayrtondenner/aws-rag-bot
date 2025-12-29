@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import os
-
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_aws.embeddings import BedrockEmbeddings
-
 from typing import Optional
+
+from langchain_aws.embeddings import BedrockEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 class DocumentTextServiceError(RuntimeError):

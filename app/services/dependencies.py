@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.services.document_text_service import DocumentTextService
+from app.services.opensearch_service import OpenSearchConfig, OpenSearchService
 from app.services.s3_service import S3Config, S3Service
 from app.services.sagemaker_docs_service import (
     SageMakerDocsConfig,
@@ -9,8 +11,6 @@ from app.services.sagemaker_docs_service import (
     SageMakerDocsSyncConfig,
     SageMakerDocsSyncService,
 )
-from app.services.document_text_service import DocumentTextService
-from app.services.opensearch_service import OpenSearchConfig, OpenSearchService
 
 
 def get_s3_service() -> S3Service:
