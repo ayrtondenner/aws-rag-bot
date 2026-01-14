@@ -120,14 +120,20 @@ class S3Service:
             logger.exception("S3 upload_path failed")
             raise S3ServiceError(f"Failed to upload local file to S3 (key={key})") from exc
 
-    async def delete_file(self, *, key: str) -> None:
+    async def get_file_content(self, *, key: str) -> bytes:
+        """Return the raw bytes for an object in the configured S3 bucket."""
+
         try:
             if not key:
                 raise ValueError("'key' must be provided")
 
             s3_client: Any = self._client()
             async with s3_client as s3:
-                await s3.delete_object(Bucket=self._config.bucket_name, Key=key)
+                resp = await s3.get_object(Bucket=self._config.bucket_name, Key=key)
+                body = resp.get("Body")
+                if body is None:
+                    return b""
+                return await body.read()
         except Exception as exc:
-            logger.exception("S3 delete_file failed")
-            raise S3ServiceError("Failed to delete file from S3") from exc
+            logger.exception("S3 get_file_content failed")
+            raise S3ServiceError(f"Failed to fetch file content from S3 (key={key})") from exc

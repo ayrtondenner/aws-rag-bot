@@ -33,3 +33,14 @@ class DeleteResponse(BaseModel):
 class FileListResponse(BaseModel):
     count: int
     files: list[FileItem]
+
+
+class BucketExistsResponse(BaseModel):
+    bucket_name: str
+    exists: bool
+
+
+class BucketFileCountResponse(BaseModel):
+    bucket_name: str
+    prefix: str | None = None
+    count: int

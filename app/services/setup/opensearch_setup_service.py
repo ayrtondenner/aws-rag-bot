@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import time
-from http import HTTPStatus
 from typing import Any, Optional, cast
 
 import aioboto3
 import aiohttp
 
 from app.services.config import OpenSearchConfig
+from app.services.document_service import DocumentService
 from app.services.opensearch_service import OpenSearchService, OpenSearchServiceError
 
 
@@ -33,15 +32,18 @@ class OpenSearchSetupService:
     _DEFAULT_COLLECTION_WAIT_SECONDS: float = 120.0
     _COLLECTION_POLL_INTERVAL_SECONDS: float = 2.0
 
-    def __init__(self, *, search: OpenSearchService, vector: OpenSearchService) -> None:
-        self._search = search
-        self._vector = vector
+    def __init__(self, *, opensearch: OpenSearchService) -> None:
+        self._opensearch = opensearch
 
     @staticmethod
     def from_env(*, session: aiohttp.ClientSession) -> "OpenSearchSetupService":
         return OpenSearchSetupService(
-            search=OpenSearchService(OpenSearchConfig.from_env_search(), session=session),
-            vector=OpenSearchService(OpenSearchConfig.from_env_vector(), session=session),
+            opensearch=OpenSearchService(
+                search_config=OpenSearchConfig.from_env_search(),
+                vector_config=OpenSearchConfig.from_env_vector(),
+                session=session,
+                documents=DocumentService(),
+            )
         )
 
     @staticmethod
@@ -116,37 +118,23 @@ class OpenSearchSetupService:
                         collection_type="VECTORSEARCH",
                     )
 
-        await self._setup_mapping(
-            collection_name=search_collection or "__search__",
+        await self._ensure_index_and_mapping(
+            target="search",
             index_name=search_index,
             expected_mapping=self._search_mapping(),
-            index_settings=None,
+            settings=None,
         )
 
-        await self._setup_mapping(
-            collection_name=vector_collection or "__vector__",
+        await self._ensure_index_and_mapping(
+            target="vector",
             index_name=vector_index,
             expected_mapping=self._vector_mapping(dimension=dimension),
-            index_settings={"index.knn": True},
+            settings={"index.knn": True},
         )
 
     # -----------------
     # Private helpers
     # -----------------
-
-    def _service_for_collection_name(self, *, collection_name: str) -> OpenSearchService:
-        configured_search = (os.getenv("OPENSEARCH_SEARCH_COLLECTION_NAME") or "").strip()
-        configured_vector = (os.getenv("OPENSEARCH_VECTOR_COLLECTION_NAME") or "").strip()
-
-        if collection_name in ("__search__", configured_search):
-            return self._search
-        if collection_name in ("__vector__", configured_vector):
-            return self._vector
-
-        raise ValueError(
-            "Unknown collection_name. Expected OPENSEARCH_SEARCH_COLLECTION_NAME/OPENSEARCH_VECTOR_COLLECTION_NAME "
-            f"(got {collection_name!r})."
-        )
 
     async def _collection_exists(self, *, client: Any, collection_name: str) -> bool:
         if not collection_name or not collection_name.strip():
@@ -198,144 +186,29 @@ class OpenSearchSetupService:
 
         raise OpenSearchCollectionError(f"Timed out waiting for collection to become ACTIVE: {collection_name}")
 
-    async def _index_exists_in_collection(self, *, collection_name: str, index_name: str) -> bool:
-        svc = self._service_for_collection_name(collection_name=collection_name)
-        return await svc.index_exists(index_name=index_name)
-
-    async def _setup_index(
+    async def _ensure_index_and_mapping(
         self,
         *,
-        collection_name: str,
+        target: str,
         index_name: str,
-        index_settings: Optional[dict[str, Any]] = None,
+        expected_mapping: dict[str, Any],
+        settings: Optional[dict[str, Any]],
     ) -> None:
-        if await self._index_exists_in_collection(collection_name=collection_name, index_name=index_name):
+        target_typed = cast(Any, target)
+        if not await self._opensearch.index_exists(index_name=index_name, target=target_typed):
+            await self._opensearch.create_index(
+                index_name=index_name,
+                mapping=expected_mapping,
+                settings=settings,
+                target=target_typed,
+            )
             return
 
-        svc = self._service_for_collection_name(collection_name=collection_name)
-        # Create index with an empty mapping; mapping is applied separately via _setup_mapping.
-        await svc.create_index_and_mapping(index_name=index_name, mapping={"properties": {}}, settings=index_settings)
-
-    async def _mapping_exists_in_index(
-        self,
-        *,
-        collection_name: str,
-        index_name: str,
-        expected_mapping: dict[str, object],
-    ) -> bool:
-        svc = self._service_for_collection_name(collection_name=collection_name)
-
-        status, payload = await svc._signed_request(method="GET", path=f"/{index_name}/_mapping")
-        if status == HTTPStatus.NOT_FOUND:
-            return False
-        if status != HTTPStatus.OK:
-            try:
-                details = payload.decode("utf-8") if payload else ""
-            except Exception:
-                details = ""
-            raise OpenSearchServiceError(
-                f"Unexpected OpenSearch response getting mapping (index={index_name}) HTTP {status} {details}".strip()
-            )
-
-        try:
-            parsed = json.loads(payload.decode("utf-8")) if payload else {}
-        except Exception:
-            parsed = {}
-
-        existing_props = self._extract_properties_from_mapping_response(index_name=index_name, mapping_resp=parsed)
-        expected_props = (expected_mapping.get("properties") if isinstance(expected_mapping, dict) else None) or {}
-        if not isinstance(expected_props, dict):
-            expected_props = {}
-
-        return self._properties_cover_expected(existing_props=existing_props, expected_props=expected_props)
-
-    @staticmethod
-    def _extract_properties_from_mapping_response(*, index_name: str, mapping_resp: dict[str, Any]) -> dict[str, Any]:
-        # Typical response:
-        # {"my-index": {"mappings": {"properties": {...}}}}
-        node = mapping_resp.get(index_name)
-        if not isinstance(node, dict):
-            # Sometimes index name may not match (aliases). Fall back to first key.
-            if mapping_resp and len(mapping_resp) == 1:
-                node = next(iter(mapping_resp.values()))
-            else:
-                node = None
-
-        if not isinstance(node, dict):
-            return {}
-        mappings = node.get("mappings")
-        if not isinstance(mappings, dict):
-            return {}
-        props = mappings.get("properties")
-        return props if isinstance(props, dict) else {}
-
-    @staticmethod
-    def _properties_cover_expected(*, existing_props: dict[str, Any], expected_props: dict[str, Any]) -> bool:
-        for field, expected_spec in expected_props.items():
-            if field not in existing_props:
-                return False
-            if not isinstance(expected_spec, dict):
-                continue
-
-            existing_spec = existing_props.get(field)
-            if not isinstance(existing_spec, dict):
-                return False
-
-            expected_type = expected_spec.get("type")
-            if expected_type and existing_spec.get("type") != expected_type:
-                return False
-
-            if expected_type == "knn_vector":
-                expected_dim_raw = expected_spec.get("dimension")
-                existing_dim_raw = existing_spec.get("dimension")
-                if expected_dim_raw is None or existing_dim_raw is None:
-                    return False
-
-                try:
-                    expected_dim = int(expected_dim_raw)
-                    existing_dim = int(existing_dim_raw)
-                except Exception:
-                    return False
-                if expected_dim != existing_dim:
-                    return False
-
-        return True
-
-    async def _setup_mapping(
-        self,
-        *,
-        collection_name: str,
-        index_name: str,
-        expected_mapping: dict[str, object],
-        index_settings: Optional[dict[str, Any]] = None,
-    ) -> None:
-        
-        # TODO: remove this if possible, this method should only create mapping, not index
-        await self._setup_index(collection_name=collection_name, index_name=index_name, index_settings=index_settings)
-
-        if await self._mapping_exists_in_index(
-            collection_name=collection_name,
+        if await self._opensearch.mapping_exists(
             index_name=index_name,
             expected_mapping=expected_mapping,
+            target=target_typed,
         ):
             return
 
-        svc = self._service_for_collection_name(collection_name=collection_name)
-        status, payload = await svc._signed_request(
-            method="PUT",
-            path=f"/{index_name}/_mapping",
-            body=json.dumps(expected_mapping).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-
-        if status in (HTTPStatus.OK, HTTPStatus.CREATED):
-            return
-
-        try:
-            details = payload.decode("utf-8") if payload else ""
-        except Exception:
-            details = ""
-
-        raise OpenSearchServiceError(
-            f"Failed to put OpenSearch mapping (index={index_name}) HTTP {status} {details}".strip()
-        )
+        await self._opensearch.put_mapping(index_name=index_name, mapping=expected_mapping, target=target_typed)

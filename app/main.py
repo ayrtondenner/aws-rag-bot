@@ -10,8 +10,9 @@ from app.routes.opensearch import router as opensearch_router
 from app.routes.s3 import router as s3_router
 from app.routes.text import router as text_router
 from app.services.dependencies import (
-    get_sagemaker_docs_service_from_app,
-    get_sagemaker_docs_sync_service,
+    get_opensearch_setup_service_from_app,
+    get_s3_setup_service,
+    startup_ingest_sagemaker_docs,
 )
 from app.services.s3_service import S3ServiceError
 
@@ -53,11 +54,12 @@ async def lifespan(app: FastAPI):
 
     # Provision required infrastructure at startup.
     try:
-        # We can’t call `get_sagemaker_docs_service(request)` here because there is no Request.
-        # Instead, use the app-based provider, which reads `app.state.http_session`.
-        await get_sagemaker_docs_service_from_app(app).setup_environment()
+        # Provision infra.
+        await get_s3_setup_service().setup_bucket()
+        await get_opensearch_setup_service_from_app(app).setup_opensearch_environment()
 
-        await get_sagemaker_docs_sync_service().startup_check_and_sync_docs()
+        # Idempotent ingestion of local docs into S3 + OpenSearch.
+        await startup_ingest_sagemaker_docs(app=app)
         yield
     finally:
         await app.state.http_session.close()

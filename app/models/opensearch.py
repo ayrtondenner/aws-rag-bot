@@ -8,8 +8,8 @@ class IndexExistsResponse(BaseModel):
     exists: bool
 
 
-class IndexSageMakerDocsResponse(BaseModel):
-    search_index_name: str
-    vector_index_name: str
-    documents_indexed: int
-    chunks_indexed: int
+class HybridSearchResponse(BaseModel):
+    phrases: list[str]
+    documents: list[str]
+    phrases_length: int
+    documents_length: int
