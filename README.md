@@ -18,6 +18,14 @@ AWS authentication can be provided either via `AWS_ACCESS_KEY_ID`/`AWS_SECRET_AC
 uvicorn app.main:app --reload
 ```
 
+### Export Conda environment
+
+To regenerate a portable `environment.yml` (relative `./.conda` prefix):
+
+```powershell
+./scripts/export-env.ps1
+```
+
 ## API
 
 - `GET /` health check
